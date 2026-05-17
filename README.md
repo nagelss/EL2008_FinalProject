@@ -25,7 +25,7 @@ Bisa tonton [tutor ini](https://www.youtube.com/watch?v=wDRoduig_98)
 Abis itu kalian bisa clone github reponya di lokasi yang kalian inginin dengan ketik
 
 ````bash
-git clone https://github.com/AqeelGhani/tugas-besar-pmp-2026-kelompok-6.git
+git clone https://github.com/hanif-page/EL2008_FinalProject.git
 ````
 
 Kalau ada pertanyaan, langsung chat ke grup Line aja ya.
