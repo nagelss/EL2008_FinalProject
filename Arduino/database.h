@@ -6,7 +6,7 @@
 
 // --- THE 96-BIT (12-BYTE) STRUCTURE ---
 struct __attribute__((packed)) ItemData {
-    uint8_t id : 7;              // 0-127
+    uint8_t id : 7;              // number ranging 0-127
 
     // 8 Characters * 6 bits = 48 bits
     uint8_t pName0 : 6;
@@ -18,10 +18,10 @@ struct __attribute__((packed)) ItemData {
     uint8_t pName6 : 6;
     uint8_t pName7 : 6;          
 
-    uint8_t category : 2;        // 0-3
-    uint8_t location : 6;        // 0-63 racks
+    uint8_t category : 2;        // number ranging 0-3
+    uint8_t location : 6;        // number of rack, ranging 0-63 
     
-    // Inventory Counts (Max 63 items each)
+    // Inventory Counts (Max 63 items each, 6 bits each)
     uint8_t qtyTersedia : 6;     
     uint8_t qtyDipinjam : 6;     
     uint8_t qtyRusak : 6;        
