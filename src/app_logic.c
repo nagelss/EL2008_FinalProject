@@ -1,3 +1,48 @@
+/*
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "app_logic.h"
+#include "user_interface.h"
+#include "serial_comm.h"
+
+void runApp() {
+    // Initialize serial port, display main menu in a while loop, 
+    // and route the user's choice to the functions below.
+}
+
+void addInventory() {
+    // Prompt UI for new item details, format into ADD string, 
+    // send via serial, and print Arduino's ACK response.
+}
+
+void deleteInventory() {
+    // Prompt UI for ID, format into DEL string, 
+    // send via serial, and print Arduino's ACK response.
+}
+
+void searchByID() {
+    // Prompt UI for ID, call GET_ALL via serial, 
+    // parse the returned data, and display only the matching item.
+}
+
+void updateStockAndStatus() {
+    // Prompt UI for ID, prompt for new quantities, 
+    // format into ADD/UPDATE string, and send via serial to overwrite.
+}
+
+void displayAllInventory() {
+    // Call GET_ALL via serial, parse the incoming CSV data, 
+    // and print it using the UI header and formatted rows.
+}
+
+void displaySummary() {
+    // Call GET_ALL via serial, parse data to calculate 
+    // total available/borrowed/broken items, and print the math summary.
+}
+*/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,258 +51,346 @@
 #include "user_interface.h"
 #include "serial_comm.h"
 
-// Helper: ambil satu baris dari buffer secara aman tanpa strtok.
-// Mengembalikan pointer ke baris berikutnya, atau NULL jika sudah habis.
-// *line_out diisi pointer ke baris saat ini (sudah di-null-terminate).
-static char* next_line(char* pos, char** line_out) {
-    if (pos == NULL || *pos == '\0') {
-        *line_out = NULL;
-        return NULL;
-    }
+char serialBuffer[1024];
 
-    *line_out = pos;
-
-    char* newline = strchr(pos, '\n');
-    if (newline) {
-        *newline = '\0';                  // akhiri baris di sini
-        // Buang \r sebelum \n (Windows line ending)
-        if (newline > pos && *(newline - 1) == '\r') {
-            *(newline - 1) = '\0';
-        }
-        return newline + 1;              // kembalikan posisi baris berikutnya
-    }
-
-    // Baris terakhir (tidak ada \n di akhir)
-    size_t len = strlen(pos);
-    if (len > 0 && pos[len - 1] == '\r') pos[len - 1] = '\0';
-    return pos + len; // pointer ke '\0', loop akan berhenti
-}
-
-// ==========================================
-// MAIN LOOP
-// ==========================================
-
-void runApp() {
+void runApp()
+{
     int pilihan;
-    while (1) {
+    int running = 1;
+
+    while(running)
+    {
+        Sleep(3000);
         printMainMenu();
         getUserChoice(&pilihan);
 
-        if      (pilihan == 1) addInventory();
-        else if (pilihan == 2) deleteInventory();
-        else if (pilihan == 3) searchByID();
-        else if (pilihan == 4) updateStockAndStatus();
-        else if (pilihan == 5) displayAllInventory();
-        else if (pilihan == 6) displaySummary();
-        else if (pilihan == 7) { closeSerialPort(); exit(0); }
-        else printf("Pilihan tidak valid. Masukkan angka 1-7.\n");
+        switch(pilihan)
+        {
+            case 1:
+                addInventory();
+                break;
+            case 2:
+                deleteInventory();
+                break;
+            case 3:
+                searchByID();
+                break;
+            case 4:
+                updateStockAndStatus();
+                break;
+            case 5:
+                displayAllInventory();
+                break;
+            case 6:
+                displaySummary();
+                break;
+            case 7:
+                printf("\nKeluar dari program...\n");
+                running = 0;
+                break;
+            default:
+                printf("\nPilihan tidak valid!\n");
+        }
+        if (pilihan != 7)
+        {
+            printf("\nLoading...\n");
+        }
     }
 }
 
-// ==========================================
-// FUNGSI CRUD
-// ==========================================
+void addInventory()
+{
+    int id, kategori,lokasi,qTer,qDip,qRus;
+    char nama[20],pic[10];
+    char command[128];
 
-void addInventory() {
-    int id, kat, lokasi, sedia, pinjam, rusak;
-    char nama[50], pic[50];
-    char cmd[256];
-    char resp[128];
-
-    promptInt("\nMasukkan ID (0-127): ", &id);
-    promptString("Nama Barang (Max 8 Char): ", nama, sizeof(nama));
-
-    while (1) {
-        promptInt("Pilih Kategori (0-3): ", &kat);
-        if (kat >= 0 && kat <= 3) break;
-        printf("Kategori tidak valid!\n");
+    printf("\n===== TAMBAH INVENTARIS =====\n");
+    promptInt("ID (0-127): ", &id);
+    if(id < 0 || id > 127)
+    {
+        printf("ERROR: ID harus 0-127\n");
+        return;
     }
-    while (1) {
-        promptInt("Lokasi Rak (0-63): ", &lokasi);
-        if (lokasi >= 0 && lokasi <= 63) break;
-        printf("Lokasi tidak valid! Masukkan 0-63.\n");
-    }
-
-    promptInt("Jumlah Barang Tersedia: ", &sedia);
-    promptInt("Jumlah Barang Dipinjam: ", &pinjam);
-    promptInt("Jumlah Barang Rusak: ",    &rusak);
-    promptString("PIC Barang (Max 3 Char): ", pic, sizeof(pic));
-
-    sprintf(cmd, "ADD,%d,%s,%d,%d,%d,%d,%d,%s\n",
-            id, nama, kat, lokasi, sedia, pinjam, rusak, pic);
-    sendSerialData(cmd);
-
-    Sleep(200);
-    receiveSerialData(resp);
-    printf("Arduino: %s\n", resp);
-}
-
-void deleteInventory() {
-    int id;
-    char cmd[64], resp[128];
-
-    promptInt("\nMasukkan ID barang yang ingin dihapus: ", &id);
-    sprintf(cmd, "DEL,%d\n", id);
-    sendSerialData(cmd);
-
-    Sleep(200);
-    receiveSerialData(resp);
-    if (strlen(resp) > 0) printf("Arduino: %s\n", resp);
-}
-
-void updateStockAndStatus() {
-    int id, s0, s1, s2;
-    char cmd[128], resp[128];
-
-    promptInt("\nMasukkan ID barang untuk update: ", &id);
-    promptInt("Masukkan jumlah baru Tersedia: ",    &s0);
-    promptInt("Masukkan jumlah baru Dipinjam: ",    &s1);
-    promptInt("Masukkan jumlah baru Rusak: ",       &s2);
-
-    sprintf(cmd, "UPDATE,%d,%d,%d,%d\n", id, s0, s1, s2);
-    sendSerialData(cmd);
-
-    Sleep(200);
-    receiveSerialData(resp);
-    if (strlen(resp) > 0) printf("Arduino: %s\n", resp);
-}
-
-// ==========================================
-// FUNGSI DISPLAY
-// (semua pakai strchr untuk loop baris,
-//  strtok hanya untuk parsing koma per baris)
-// ==========================================
-
-void searchByID() {
-    int target_id;
-    char buffer[4096];
-    int found = 0;
-
-    promptInt("\nMasukkan ID barang yang dicari: ", &target_id);
 
     sendSerialData("GET_ALL\n");
-    Sleep(1000);
-    receiveSerialData(buffer);
+    receiveSerialData(serialBuffer);
 
-    char* pos = buffer;
-    char* line;
-    while ((pos = next_line(pos, &line)) != NULL || (line != NULL && *line != '\0')) {
-        if (line == NULL || *line == '\0') break;
-        if (strncmp(line, "END",   3) == 0) break;
-        if (strncmp(line, "EMPTY", 5) == 0) break;
+    char *line = strtok(serialBuffer, "\n");
+    int idSudahAda = 0;
 
-        // strtok aman di sini karena tidak ada strtok lain yang berjalan
-        // di luar fungsi ini untuk string yang sama.
-        char* token;
-        token = strtok(line, ","); if (!token) { pos = (pos && *pos) ? pos : NULL; continue; }
-        int p_id = atoi(token);
+    while(line != NULL)
+    {
+        if(strcmp(line, "END") == 0) break;
+        int existingId;
+        if(sscanf(line, "%d,", &existingId) == 1)
+        {
+            if(existingId == id)
+            {
+                idSudahAda = 1;
+                break;
+            }
+        }
+        line = strtok(NULL, "\n");
+    }
+    if(idSudahAda)
+    {
+        printf("ERROR: ID %d sudah digunakan!\n", id);
+        return;
+    }
+    
+    promptString(
+        "Nama (maks 8 karakter): ",
+        nama,
+        sizeof(nama)
+    );
+    promptInt(
+        "Kategori (0-3): ",
+        &kategori
+    );
+    promptInt(
+        "Lokasi (0-63): ",
+        &lokasi
+    );
+    promptInt(
+        "Qty Tersedia (0-63): ",
+        &qTer
+    );
+    promptInt(
+        "Qty Dipinjam (0-63): ",
+        &qDip
+    );
+    promptInt(
+        "Qty Rusak (0-63): ",
+        &qRus
+    );
+    promptString(
+        "PIC (3 huruf): ",
+        pic,
+        sizeof(pic)
+    );
 
-        if (p_id != target_id) {
-            // Bukan target, lanjut ke baris berikutnya
-            if (pos == NULL || *pos == '\0') break;
-            continue;
+    if(kategori < 0 || kategori > 3)
+    {
+        printf("ERROR: Kategori harus 0-3\n");
+        return;
+    }
+    if(lokasi < 0 || lokasi > 63)
+    {
+        printf("ERROR: Lokasi harus 0-63\n");
+        return;
+    }
+    if(qTer < 0 || qTer > 63 ||
+       qDip < 0 || qDip > 63 ||
+       qRus < 0 || qRus > 63)
+    {
+        printf("ERROR: Qty harus 0-63\n");
+        return;
+    }
+
+    snprintf(
+        command,
+        sizeof(command),
+        "ADD,%d,%.8s,%d,%d,%d,%d,%d,%.3s\n",id,nama,kategori,lokasi,qTer,qDip,qRus,pic
+    );
+
+    sendSerialData(command);
+    receiveSerialData(serialBuffer);
+    printf("\n[Arduino] %s\n", serialBuffer);
+}
+
+void deleteInventory()
+{
+    int id;
+    char command[32];
+
+    printf("\n===== HAPUS INVENTARIS =====\n");
+    promptInt(
+        "Masukkan ID: ",
+        &id
+    );
+    snprintf(
+        command,
+        sizeof(command),
+        "DEL,%d\n",
+        id
+    );
+
+    sendSerialData(command);
+    receiveSerialData(serialBuffer);
+    if (strstr(serialBuffer, "ERR") != NULL || strstr(serialBuffer, "ERROR") != NULL)
+    {
+        printf("ERROR: ID %d tidak ditemukan!\n", id);
+    }
+    else
+    {
+        printf("ID %d berhasil dihapus!", id);
+    }
+}
+
+void searchByID()
+{
+    int targetID;
+    printf("\n===== CARI BERDASARKAN ID =====\n");
+    promptInt(
+        "Masukkan ID: ",
+        &targetID
+    );
+    sendSerialData("GET_ALL\n");
+    receiveSerialData(serialBuffer);
+
+    char *line = strtok(serialBuffer, "\n");
+
+    while(line != NULL)
+    {
+        if(strcmp(line, "END") == 0)
+        {
+            break;
         }
 
-        token = strtok(NULL, ","); char* p_nama   = token ? token : "";
-        token = strtok(NULL, ","); int   p_kat    = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_lokasi = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_sedia  = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_pinjam = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_rusak  = token ? atoi(token) : 0;
-        token = strtok(NULL, "\r\n"); char* p_pic = token ? token : "";
+        int id, kategori,lokasi,qTer,qDip,qRus;
+        char nama[20],pic[10];
+        int parsed =
+            sscanf(
+                line,
+                "%d,%[^,],%d,%d,%d,%d,%d,%[^,\n]",&id,nama,&kategori,&lokasi,&qTer,&qDip,&qRus,pic
+            );
 
-        printf("\n--- Data Ditemukan ---\n");
-        printf("ID       : %d\n",   p_id);
-        printf("Nama     : %s\n",   p_nama);
-        printf("Kategori : %d\n",   p_kat);
-        printf("Lokasi   : %d\n",   p_lokasi);
-        printf("Total    : %d (Sedia: %d, Pinjam: %d, Rusak: %d)\n",
-               p_sedia + p_pinjam + p_rusak, p_sedia, p_pinjam, p_rusak);
-        printf("PIC      : %s\n",   p_pic);
-        found = 1;
-        break;
+        if(parsed == 8 && id == targetID)
+        {
+            printf("\n===== DATA DITEMUKAN =====\n");
+            printf("ID          : %d\n", id);
+            printf("Nama        : %s\n", nama);
+            printf("Kategori    : %d\n", kategori);
+            printf("Lokasi      : %d\n", lokasi);
+            printf("Tersedia    : %d\n", qTer);
+            printf("Dipinjam    : %d\n", qDip);
+            printf("Rusak       : %d\n", qRus);
+            printf("PIC         : %s\n", pic);
+
+            return;
+        }
+
+        line = strtok(NULL, "\n");
     }
 
-    if (!found) printf("Barang dengan ID %d tidak ditemukan.\n", target_id);
+    printf("\nID tidak ditemukan.\n");
 }
 
-void displayAllInventory() {
-    char buffer[4096];
-    printHeader();
+void updateStockAndStatus()
+{
+    int id,qTer,qDip,qRus;
+    char command[64];
 
+    printf("\n===== UPDATE INVENTARIS =====\n");
+    promptInt(
+        "ID Barang: ",
+        &id
+    );
+    promptInt(
+        "Qty Tersedia Baru: ",
+        &qTer
+    );
+    promptInt(
+        "Qty Dipinjam Baru: ",
+        &qDip
+    );
+    promptInt(
+        "Qty Rusak Baru: ",
+        &qRus
+    );
+    snprintf(
+        command,
+        sizeof(command),
+        "UPDATE,%d,%d,%d,%d\n",id,qTer,qDip,qRus
+    );
+
+    sendSerialData(command);
+    receiveSerialData(serialBuffer);
+    printf("\n[Arduino] %s\n", serialBuffer);
+}
+
+void displayAllInventory()
+{
     sendSerialData("GET_ALL\n");
-    Sleep(1000);                  // Naikkan ke 1 detik — data banyak, 9600 baud lambat
-    receiveSerialData(buffer);
+    receiveSerialData(serialBuffer);
+    printTableHeader();
 
-    char* pos = buffer;
-    char* line;
-    // --- FIX NESTED STRTOK ---
-    // Dulu: strtok(buffer, "\n") untuk loop baris, lalu strtok(tempLine, ",")
-    // di dalam loop. Pemanggilan strtok kedua menimpa state strtok pertama,
-    // sehingga strtok(NULL, "\n") di akhir loop selalu NULL → hanya 1 baris tampil.
-    //
-    // Fix: gunakan next_line() (berbasis strchr) untuk loop baris.
-    // strtok hanya dipakai sekali per baris untuk parsing koma → tidak ada konflik.
-    while ((pos = next_line(pos, &line)) != NULL || (line != NULL && *line != '\0')) {
-        if (line == NULL || *line == '\0') break;
-        if (strncmp(line, "END",   3) == 0) break;
-        if (strncmp(line, "EMPTY", 5) == 0) break;
+    char *line = strtok(serialBuffer, "\n");
 
-        char* token;
-        token = strtok(line, ","); if (!token) { if (!pos || !*pos) break; continue; }
-        int   p_id     = atoi(token);
-        token = strtok(NULL, ","); char* p_nama   = token ? token : "";
-        token = strtok(NULL, ","); int   p_kat    = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_lokasi = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_sedia  = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_pinjam = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int   p_rusak  = token ? atoi(token) : 0;
-        token = strtok(NULL, "\r\n"); char* p_pic = token ? token : "";
+    while(line != NULL)
+    {
+        if(strcmp(line, "END") == 0)
+        {
+            break;
+        }
 
-        printf("  | %-4d | %-16s | %-10d | %-10d | %-5d | %-5d | %-5d | %-14s |\n",
-               p_id, p_nama, p_kat, p_lokasi,
-               p_sedia, p_pinjam, p_rusak, p_pic);
+        int id, kategori,lokasi,qTer,qDip,qRus;
+        char nama[20],pic[10];
 
-        if (pos == NULL || *pos == '\0') break;
+        int parsed =
+            sscanf(
+                line,
+                "%d,%[^,],%d,%d,%d,%d,%d,%[^,\n]",&id,nama,&kategori,&lokasi,&qTer,&qDip,&qRus,pic
+            );
+
+        if(parsed == 8)
+        {
+            printf(
+                "  | %-3d | %-8.8s |    %1d     |   %2d   |    %2d    |    %2d    |   %2d  | %-3.3s |\n",
+                id,nama,kategori,lokasi,qTer,qDip,qRus,pic
+            );
+        }
+
+        line = strtok(NULL, "\n");
     }
+
     printTableFooter();
 }
 
-void displaySummary() {
-    char buffer[4096];
-    int total_jenis  = 0;
-    int total_barang = 0;
-    int total_rusak  = 0;
+void displaySummary()
+{
+    int totalJenis = 0;
+    int totalTersedia = 0;
+    int totalDipinjam = 0;
+    int totalRusak = 0;
 
     sendSerialData("GET_ALL\n");
-    Sleep(1000);
-    receiveSerialData(buffer);
 
-    char* pos = buffer;
-    char* line;
-    while ((pos = next_line(pos, &line)) != NULL || (line != NULL && *line != '\0')) {
-        if (line == NULL || *line == '\0') break;
-        if (strncmp(line, "END",   3) == 0) break;
-        if (strncmp(line, "EMPTY", 5) == 0) break;
+    receiveSerialData(serialBuffer);
 
-        char* token;
-        strtok(line, ",");         // id
-        strtok(NULL, ",");         // nama
-        strtok(NULL, ",");         // kat
-        strtok(NULL, ",");         // lokasi
-        token = strtok(NULL, ","); int p_sedia  = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int p_pinjam = token ? atoi(token) : 0;
-        token = strtok(NULL, ","); int p_rusak  = token ? atoi(token) : 0;
+    char *line = strtok(serialBuffer, "\n");
 
-        total_jenis++;
-        total_barang += (p_sedia + p_pinjam + p_rusak);
-        total_rusak  += p_rusak;
+    while(line != NULL)
+    {
+        if(strcmp(line, "END") == 0)
+        {
+            break;
+        }
 
-        if (pos == NULL || *pos == '\0') break;
+        int id, kategori,lokasi,qTer,qDip,qRus;
+        char nama[20],pic[10];
+
+        int parsed =
+            sscanf(
+                line,
+                "%d,%[^,],%d,%d,%d,%d,%d,%[^,\n]",&id,nama,&kategori,&lokasi,&qTer,&qDip,&qRus,pic
+            );
+
+        if(parsed == 8)
+        {
+            totalJenis++;
+            totalTersedia += qTer;
+            totalDipinjam += qDip;
+            totalRusak += qRus;
+        }
+
+        line = strtok(NULL, "\n");
     }
 
-    printf("\n--- Ringkasan Inventaris ---\n");
-    printf("Total Jenis Barang : %d\n", total_jenis);
-    printf("Total Fisik Barang : %d\n", total_barang);
-    printf("Total Barang Rusak : %d\n", total_rusak);
+    printf("\n========== RINGKASAN ==========\n");
+    printf("Jumlah Jenis Barang : %d\n", totalJenis);
+    printf("Total Tersedia      : %d\n", totalTersedia);
+    printf("Total Dipinjam      : %d\n", totalDipinjam);
+    printf("Total Rusak         : %d\n", totalRusak);
+    printf("===============================\n");
 }
